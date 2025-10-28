@@ -44,7 +44,32 @@ pip install -r requirements.txt
 
 # Konfiguracja środowiska
 cp .env.example .env
-# Edytuj .env i dodaj swój klucz OpenAI API
+# Edytuj .env i dodaj swoje dane Azure OpenAI
+```
+
+## 🔧 Konfiguracja Azure OpenAI
+
+### 1. Utwórz zasób Azure OpenAI
+1. Przejdź do [Azure Portal](https://portal.azure.com)
+2. Utwórz nowy zasób "Azure OpenAI"
+3. Wybierz region i warstwę cenową
+4. Po utworzeniu, przejdź do "Keys and Endpoint"
+
+### 2. Utwórz deployment modelu
+1. W Azure OpenAI Studio, przejdź do "Deployments"
+2. Utwórz nowy deployment (np. GPT-4)
+3. Zapisz nazwę deploymentu
+
+### 3. Skonfiguruj zmienne środowiskowe
+```bash
+# Skopiuj plik konfiguracyjny
+cp .env.example .env
+
+# Edytuj .env i uzupełnij:
+AZURE_OPENAI_API_KEY=your_api_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
 ```
 
 ## 🚀 Uruchomienie
@@ -173,7 +198,11 @@ const ws = new WebSocket('ws://localhost:8000/ws');
 
 ### Zmienne Środowiskowe
 ```bash
-OPENAI_API_KEY=your_openai_api_key_here
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
 ```
 
 ### Ustawienia Aplikacji
@@ -311,7 +340,8 @@ MIT License - zobacz plik LICENSE dla szczegółów.
 
 ## 🙏 Podziękowania
 
-- OpenAI za API GPT-4
+- Azure OpenAI za usługi AI
+- OpenAI za modele GPT-4
 - FastAPI za framework webowy
 - Pydantic za walidację danych
 - Wszystkim kontrybutorom
