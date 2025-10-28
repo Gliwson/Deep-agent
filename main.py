@@ -859,4 +859,4 @@ async def create_mock_api(mock_type: str, mock_data: Dict[str, Any]):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=58395)

@@ -159,7 +159,7 @@ class TestDeepAgent:
             Mock(name="dir1", is_file=Mock(return_value=False), is_dir=Mock(return_value=True), stat=Mock(return_value=Mock(st_size=None, st_mtime=1234567890)))
         ]
         
-        with patch("pathlib.Path") as mock_path_class:
+        with patch("main.Path") as mock_path_class:
             mock_path_class.return_value = mock_path
             result = await self.agent.list_directory("test_dir")
             
@@ -201,8 +201,11 @@ class TestDeepAgent:
         mock_process.returncode = 0
         mock_process.communicate = AsyncMock(return_value=(b"output", b""))
         
+        async def mock_wait_for(coro, timeout):
+            return await coro
+            
         with patch("asyncio.create_subprocess_shell", return_value=mock_process):
-            with patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+            with patch("asyncio.wait_for", side_effect=mock_wait_for):
                 with patch("pathlib.Path.exists", return_value=True):
                     # Mock the workspace_root
                     self.agent.workspace_root = Mock()
