@@ -1,27 +1,28 @@
 import pytest
 import asyncio
 import json
-from unittest.mock import Mock, patch, AsyncMock
-from main import DeepAgent, CodeAnalysisRequest, CodeGenerationRequest, TestGenerationRequest, RefactoringRequest
+from unittest.mock import Mock, patch, AsyncMock, mock_open
+from main import (
+    DeepAgent, CodeAnalysisRequest, CodeGenerationRequest, TestGenerationRequest, 
+    RefactoringRequest, FileReadRequest, FileWriteRequest, SearchRequest, 
+    ReplaceRequest, TerminalRequest, PlanningRequest
+)
 
 class TestDeepAgent:
     def setup_method(self):
         """Setup for each test method"""
         self.agent = DeepAgent()
         self.agent.client = Mock()
+        # Mock OpenAI response
+        self.mock_choice = Mock()
+        self.mock_choice.message.content = '{"quality": "good", "bugs": [], "performance": "optimized"}'
+        self.mock_response = Mock()
+        self.mock_response.choices = [self.mock_choice]
+        self.agent.client.chat.completions.create = AsyncMock(return_value=self.mock_response)
         
     @pytest.mark.asyncio
     async def test_analyze_code_success(self):
         """Test successful code analysis"""
-        # Mock OpenAI response
-        mock_choice = Mock()
-        mock_choice.message.content = '{"quality": "good", "bugs": [], "performance": "optimized"}'
-        
-        mock_response = Mock()
-        mock_response.choices = [mock_choice]
-        
-        self.agent.client.chat.completions.create = AsyncMock(return_value=mock_response)
-        
         # Test data
         request = CodeAnalysisRequest(
             code="def hello(): return 'world'",
@@ -36,13 +37,13 @@ class TestDeepAgent:
         assert result.success is True
         assert "analysis" in result.data
         assert result.error is None
-        self.agent.llm.agenerate.assert_called_once()
+        self.agent.client.chat.completions.create.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_analyze_code_failure(self):
         """Test code analysis failure"""
-        # Mock LLM to raise exception
-        self.agent.llm.agenerate = AsyncMock(side_effect=Exception("API Error"))
+        # Mock client to raise exception
+        self.agent.client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
         
         request = CodeAnalysisRequest(
             code="def hello(): return 'world'",
@@ -58,13 +59,7 @@ class TestDeepAgent:
     @pytest.mark.asyncio
     async def test_generate_code_success(self):
         """Test successful code generation"""
-        mock_generation = Mock()
-        mock_generation.text = "def calculate_sum(a, b):\n    return a + b"
-        
-        mock_response = Mock()
-        mock_response.generations = [[mock_generation]]
-        
-        self.agent.llm.agenerate = AsyncMock(return_value=mock_response)
+        self.mock_choice.message.content = "def calculate_sum(a, b):\n    return a + b"
         
         request = CodeGenerationRequest(
             description="Create a function that adds two numbers",
@@ -80,13 +75,7 @@ class TestDeepAgent:
     @pytest.mark.asyncio
     async def test_generate_tests_success(self):
         """Test successful test generation"""
-        mock_generation = Mock()
-        mock_generation.text = "def test_calculate_sum():\n    assert calculate_sum(2, 3) == 5"
-        
-        mock_response = Mock()
-        mock_response.generations = [[mock_generation]]
-        
-        self.agent.llm.agenerate = AsyncMock(return_value=mock_response)
+        self.mock_choice.message.content = "def test_calculate_sum():\n    assert calculate_sum(2, 3) == 5"
         
         request = TestGenerationRequest(
             code="def calculate_sum(a, b):\n    return a + b",
@@ -103,13 +92,7 @@ class TestDeepAgent:
     @pytest.mark.asyncio
     async def test_refactor_code_success(self):
         """Test successful code refactoring"""
-        mock_generation = Mock()
-        mock_generation.text = "def calculate_sum(a: int, b: int) -> int:\n    \"\"\"Add two integers.\"\"\"\n    return a + b"
-        
-        mock_response = Mock()
-        mock_response.generations = [[mock_generation]]
-        
-        self.agent.llm.agenerate = AsyncMock(return_value=mock_response)
+        self.mock_choice.message.content = "def calculate_sum(a: int, b: int) -> int:\n    \"\"\"Add two integers.\"\"\"\n    return a + b"
         
         request = RefactoringRequest(
             code="def calculate_sum(a, b):\n    return a + b",
@@ -128,7 +111,130 @@ class TestDeepAgent:
         assert self.agent._get_default_test_framework("python") == "pytest"
         assert self.agent._get_default_test_framework("javascript") == "jest"
         assert self.agent._get_default_test_framework("java") == "junit"
+        assert self.agent._get_default_test_framework("rust") == "cargo test"
         assert self.agent._get_default_test_framework("unknown") == "pytest"
+    
+    @pytest.mark.asyncio
+    async def test_read_file_success(self):
+        """Test successful file reading"""
+        with patch("builtins.open", mock_open(read_data="test content")):
+            with patch("pathlib.Path.exists", return_value=True):
+                request = FileReadRequest(file_path="test.py")
+                result = await self.agent.read_file(request)
+                
+                assert result.success is True
+                assert "content" in result.data
+                assert result.data["content"] == "test content"
+    
+    @pytest.mark.asyncio
+    async def test_read_file_not_found(self):
+        """Test file reading when file doesn't exist"""
+        with patch("pathlib.Path.exists", return_value=False):
+            request = FileReadRequest(file_path="nonexistent.py")
+            result = await self.agent.read_file(request)
+            
+            assert result.success is False
+            assert "not found" in result.message.lower()
+    
+    @pytest.mark.asyncio
+    async def test_write_file_success(self):
+        """Test successful file writing"""
+        with patch("builtins.open", mock_open()):
+            with patch("pathlib.Path.parent") as mock_parent:
+                mock_parent.mkdir = Mock()
+                with patch("pathlib.Path.exists", return_value=False):
+                    request = FileWriteRequest(file_path="test.py", content="test content")
+                    result = await self.agent.write_file(request)
+                    
+                    assert result.success is True
+                    assert "written successfully" in result.message
+    
+    @pytest.mark.asyncio
+    async def test_list_directory_success(self):
+        """Test successful directory listing"""
+        mock_path = Mock()
+        mock_path.exists.return_value = True
+        mock_path.iterdir.return_value = [
+            Mock(name="file1.py", is_file=Mock(return_value=True), is_dir=Mock(return_value=False), stat=Mock(return_value=Mock(st_size=100, st_mtime=1234567890))),
+            Mock(name="dir1", is_file=Mock(return_value=False), is_dir=Mock(return_value=True), stat=Mock(return_value=Mock(st_size=None, st_mtime=1234567890)))
+        ]
+        
+        with patch("pathlib.Path") as mock_path_class:
+            mock_path_class.return_value = mock_path
+            result = await self.agent.list_directory("test_dir")
+            
+            assert result.success is True
+            assert len(result.data["items"]) == 2
+    
+    @pytest.mark.asyncio
+    async def test_search_text_success(self):
+        """Test successful text search"""
+        with patch("pathlib.Path.rglob") as mock_rglob:
+            mock_file = Mock()
+            mock_file.is_file.return_value = True
+            mock_file.__str__ = Mock(return_value="test.py")
+            mock_rglob.return_value = [mock_file]
+            
+            with patch("builtins.open", mock_open(read_data="def test_function():\n    pass")):
+                request = SearchRequest(pattern="test_function")
+                result = await self.agent.search_text(request)
+                
+                assert result.success is True
+                assert "results" in result.data
+    
+    @pytest.mark.asyncio
+    async def test_replace_text_success(self):
+        """Test successful text replacement"""
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("builtins.open", mock_open(read_data="old text")):
+                with patch("shutil.copy2"):
+                    request = ReplaceRequest(file_path="test.py", old_text="old", new_text="new")
+                    result = await self.agent.replace_text(request)
+                    
+                    assert result.success is True
+                    assert "replaced successfully" in result.message
+    
+    @pytest.mark.asyncio
+    async def test_execute_command_success(self):
+        """Test successful command execution"""
+        mock_process = Mock()
+        mock_process.returncode = 0
+        mock_process.communicate = AsyncMock(return_value=(b"output", b""))
+        
+        with patch("asyncio.create_subprocess_shell", return_value=mock_process):
+            with patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+                with patch("pathlib.Path.exists", return_value=True):
+                    # Mock the workspace_root
+                    self.agent.workspace_root = Mock()
+                    self.agent.workspace_root.exists.return_value = True
+                    request = TerminalRequest(command="ls")
+                    result = await self.agent.execute_command(request)
+                    
+                    assert result.success is True
+                    assert "executed" in result.message
+    
+    @pytest.mark.asyncio
+    async def test_plan_task_success(self):
+        """Test successful task planning"""
+        self.mock_choice.message.content = '{"plan": "detailed plan"}'
+        
+        request = PlanningRequest(task="test task", context="test context")
+        result = await self.agent.plan_task(request)
+        
+        assert result.success is True
+        assert "plan" in result.data
+        self.agent.client.chat.completions.create.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_create_mock_success(self):
+        """Test successful mock creation"""
+        with patch("pathlib.Path.mkdir"):
+            with patch("builtins.open", mock_open()):
+                with patch("json.dump"):
+                    result = await self.agent.create_mock("api_response", {"test": "data"})
+                    
+                    assert result.success is True
+                    assert "created successfully" in result.message
 
 class TestWebSocketIntegration:
     """Integration tests for WebSocket functionality"""
@@ -261,14 +367,14 @@ class TestPerformance:
     async def test_concurrent_requests(self):
         """Test handling multiple concurrent requests"""
         agent = DeepAgent()
-        agent.llm = Mock()
+        agent.client = Mock()
         
-        # Mock LLM response
-        mock_generation = Mock()
-        mock_generation.text = "Test response"
+        # Mock OpenAI response
+        mock_choice = Mock()
+        mock_choice.message.content = "Test response"
         mock_response = Mock()
-        mock_response.generations = [[mock_generation]]
-        agent.llm.agenerate = AsyncMock(return_value=mock_response)
+        mock_response.choices = [mock_choice]
+        agent.client.chat.completions.create = AsyncMock(return_value=mock_response)
         
         # Create multiple concurrent requests
         requests = [
