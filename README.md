@@ -1,232 +1,321 @@
-# Deep Agent - AI Coding Assistant Backend
+# Deep Agent Backend - Kompleksowe Narzędzie do Analizy Kodu
 
-Deep Agent to zaawansowany backend agenta kodującego, który komunikuje się przez WebSocket z pluginami IDE (jak IntelliJ). Agent wykorzystuje LangChain i OpenAI do analizy kodu, generowania, pisania testów i refaktoryzacji.
+Zaawansowane narzędzie do analizy kodu z funkcjami podobnymi do Cursor/Kite, ale w pełni funkcjonalne w Pythonie z obsługą WebSocket i REST API.
 
-## Funkcjonalności
+## 🚀 Funkcje
 
-- 🔍 **Analiza kodu** - Ocena jakości, wykrywanie błędów, sugestie optymalizacji
-- ⚡ **Generowanie kodu** - Tworzenie kodu na podstawie opisu
-- 🧪 **Generowanie testów** - Automatyczne tworzenie testów jednostkowych
-- 🔧 **Refaktoryzacja** - Ulepszanie i optymalizacja istniejącego kodu
-- 🌐 **WebSocket API** - Komunikacja w czasie rzeczywistym z IDE
-- 🐍 **Wielojęzyczność** - Obsługa Python, JavaScript, TypeScript, Java, C# i innych
+### 📁 Operacje na Plikach
+- **Odczytywanie plików** - pełna obsługa różnych kodowań
+- **Zapisywanie plików** - z automatycznym tworzeniem katalogów i backupów
+- **Listowanie katalogów** - szczegółowe informacje o plikach i folderach
 
-## Instalacja
+### 🔍 Wyszukiwanie i Zamiana
+- **Wyszukiwanie tekstu** - z obsługą regex i wyszukiwania case-sensitive
+- **Zamiana tekstu** - z kontrolą liczby zamian i backupami
+- **Wyszukiwanie w katalogach** - rekurencyjne przeszukiwanie
 
-1. **Sklonuj repozytorium:**
+### 💻 Wykonywanie Komend
+- **Terminal** - wykonywanie komend systemowych z timeout
+- **Obsługa błędów** - szczegółowe logi i komunikaty
+
+### 🤖 Analiza i Generowanie Kodu
+- **Analiza kodu** - jakość, błędy, wydajność, bezpieczeństwo
+- **Generowanie kodu** - na podstawie opisu z kontekstem
+- **Generowanie testów** - kompletne testy jednostkowe
+- **Refaktoryzacja** - optymalizacja i poprawa kodu
+
+### 🧠 Planowanie i Myślenie
+- **Planowanie zadań** - szczegółowe plany z zależnościami
+- **Analiza ryzyka** - ocena i alternatywne podejścia
+
+### 🎭 Mocki i Symulacje
+- **Tworzenie mocków** - API, bazy danych, system plików
+- **Symulacje** - testowanie bez rzeczywistych zależności
+
+## 🛠️ Instalacja
+
 ```bash
+# Klonowanie repozytorium
 git clone <repository-url>
-cd deep-agent
-```
+cd deep-agent-backend
 
-2. **Zainstaluj zależności:**
-```bash
+# Instalacja zależności
 pip install -r requirements.txt
-```
 
-3. **Skonfiguruj zmienne środowiskowe:**
-```bash
+# Konfiguracja środowiska
 cp .env.example .env
 # Edytuj .env i dodaj swój klucz OpenAI API
 ```
 
-4. **Uruchom serwer:**
+## 🚀 Uruchomienie
+
+### Serwer Backend
 ```bash
 python main.py
 ```
 
-Serwer będzie dostępny na `http://localhost:8000` z WebSocket na `ws://localhost:8000/ws`
+### Testy
+```bash
+# Wszystkie testy
+python -m pytest test_agent.py -v
 
-## Konfiguracja
-
-### Zmienne środowiskowe (.env)
-
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-HOST=0.0.0.0
-PORT=8000
-LOG_LEVEL=INFO
+# Konkretne testy
+python -m pytest test_agent.py::TestDeepAgent::test_analyze_code_success -v
 ```
 
-### Wymagania systemowe
+### Klient WebSocket
+```bash
+# Tryb automatyczny
+python test_websocket_client.py
 
-- Python 3.8+
-- OpenAI API key
-- Połączenie internetowe
+# Tryb interaktywny
+python test_websocket_client.py interactive
+```
 
-## API WebSocket
+## 📡 API
 
-### Format wiadomości
+### REST Endpoints
 
-```json
+#### Analiza Kodu
+```http
+POST /api/analyze
+Content-Type: application/json
+
 {
-  "action": "analyze_code|generate_code|generate_tests|refactor_code",
-  "data": {
-    // Dane specyficzne dla akcji
-  }
+  "code": "def hello(): return 'world'",
+  "language": "python",
+  "context": "Simple function"
 }
 ```
 
-### Dostępne akcje
+#### Generowanie Kodu
+```http
+POST /api/generate
+Content-Type: application/json
 
-#### 1. Analiza kodu (`analyze_code`)
+{
+  "description": "Create a function that calculates factorial",
+  "language": "python",
+  "context": "Mathematical function"
+}
+```
 
+#### Operacje na Plikach
+```http
+POST /api/read-file
+Content-Type: application/json
+
+{
+  "file_path": "/path/to/file.py",
+  "encoding": "utf-8"
+}
+```
+
+#### Wyszukiwanie
+```http
+POST /api/search
+Content-Type: application/json
+
+{
+  "pattern": "function_name",
+  "directory": "/path/to/search",
+  "case_sensitive": false,
+  "regex": false
+}
+```
+
+#### Wykonywanie Komend
+```http
+POST /api/execute
+Content-Type: application/json
+
+{
+  "command": "ls -la",
+  "working_directory": "/workspace",
+  "timeout": 30
+}
+```
+
+### WebSocket API
+
+#### Połączenie
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws');
+```
+
+#### Format Wiadomości
 ```json
 {
   "action": "analyze_code",
   "data": {
     "code": "def hello(): return 'world'",
     "language": "python",
-    "context": "Opcjonalny kontekst"
+    "context": "Simple function"
   }
 }
 ```
 
-#### 2. Generowanie kodu (`generate_code`)
+#### Dostępne Akcje
+- `analyze_code` - analiza kodu
+- `generate_code` - generowanie kodu
+- `generate_tests` - generowanie testów
+- `refactor_code` - refaktoryzacja
+- `read_file` - odczyt pliku
+- `write_file` - zapis pliku
+- `list_directory` - listowanie katalogu
+- `search_text` - wyszukiwanie tekstu
+- `replace_text` - zamiana tekstu
+- `execute_command` - wykonywanie komend
+- `plan_task` - planowanie zadań
+- `create_mock` - tworzenie mocków
 
-```json
-{
-  "action": "generate_code",
-  "data": {
-    "description": "Funkcja obliczająca silnię",
-    "language": "python",
-    "context": "Opcjonalny kontekst",
-    "existing_code": "Opcjonalny istniejący kod"
-  }
-}
-```
+## 🔧 Konfiguracja
 
-#### 3. Generowanie testów (`generate_tests`)
-
-```json
-{
-  "action": "generate_tests",
-  "data": {
-    "code": "def add(a, b): return a + b",
-    "language": "python",
-    "test_framework": "pytest"
-  }
-}
-```
-
-#### 4. Refaktoryzacja (`refactor_code`)
-
-```json
-{
-  "action": "refactor_code",
-  "data": {
-    "code": "def old_function(): ...",
-    "language": "python",
-    "refactoring_type": "optimize|clean|restructure"
-  }
-}
-```
-
-### Format odpowiedzi
-
-```json
-{
-  "success": true,
-  "message": "Opis operacji",
-  "data": {
-    // Dane wynikowe
-  },
-  "error": null
-}
-```
-
-## Testowanie
-
-### Uruchomienie testów
-
+### Zmienne Środowiskowe
 ```bash
-# Wszystkie testy
-python run_tests.py
+OPENAI_API_KEY=your_openai_api_key_here
+```
 
-# Tylko testy jednostkowe
-pytest test_agent.py -v
+### Ustawienia Aplikacji
+- **Port**: 8000 (domyślnie)
+- **Host**: 0.0.0.0
+- **Workspace**: /workspace (domyślnie)
 
-# Test WebSocket (wymaga uruchomionego serwera)
+## 📊 Przykłady Użycia
+
+### Analiza Kodu
+```python
+import requests
+
+response = requests.post('http://localhost:8000/api/analyze', json={
+    "code": """
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+    """,
+    "language": "python",
+    "context": "Recursive Fibonacci implementation"
+})
+
+print(response.json())
+```
+
+### Wyszukiwanie w Kodzie
+```python
+response = requests.post('http://localhost:8000/api/search', json={
+    "pattern": "def.*fibonacci",
+    "directory": "/workspace",
+    "regex": True
+})
+
+print(response.json())
+```
+
+### Wykonywanie Komend
+```python
+response = requests.post('http://localhost:8000/api/execute', json={
+    "command": "python --version",
+    "timeout": 10
+})
+
+print(response.json())
+```
+
+## 🧪 Testowanie
+
+### Testy Jednostkowe
+```bash
+python -m pytest test_agent.py -v
+```
+
+### Testy Integracyjne
+```bash
 python test_websocket_client.py
 ```
 
-### Tryb interaktywny
-
+### Testy Wydajnościowe
 ```bash
-python test_websocket_client.py interactive
+python -m pytest test_agent.py::TestPerformance -v
 ```
 
-## Integracja z IntelliJ
+## 🏗️ Architektura
 
-Agent jest zaprojektowany do pracy z pluginem IntelliJ. Plugin powinien:
+### Komponenty
+- **DeepAgent** - główna klasa z logiką biznesową
+- **ConnectionManager** - zarządzanie połączeniami WebSocket
+- **FastAPI** - framework REST API
+- **OpenAI** - integracja z modelem AI
 
-1. Łączyć się z WebSocket na `ws://localhost:8000/ws`
-2. Wysyłać żądania w formacie JSON
-3. Obsługiwać odpowiedzi asynchronicznie
-
-### Przykład integracji (JavaScript)
-
-```javascript
-const ws = new WebSocket('ws://localhost:8000/ws');
-
-ws.onopen = function() {
-    // Wysyłanie żądania analizy kodu
-    ws.send(JSON.stringify({
-        action: 'analyze_code',
-        data: {
-            code: 'function test() { return 42; }',
-            language: 'javascript'
-        }
-    }));
-};
-
-ws.onmessage = function(event) {
-    const response = JSON.parse(event.data);
-    console.log('Odpowiedź:', response);
-};
+### Struktura Plików
 ```
-
-## Architektura
-
-```
-┌─────────────────┐    WebSocket    ┌──────────────────┐
-│   IntelliJ      │◄──────────────►│   Deep Agent     │
-│   Plugin        │                 │   Backend        │
-└─────────────────┘                 └──────────────────┘
-                                            │
-                                            ▼
-                                    ┌──────────────────┐
-                                    │   LangChain +    │
-                                    │   OpenAI API     │
-                                    └──────────────────┘
-```
-
-## Rozwój
-
-### Struktura projektu
-
-```
-deep-agent/
-├── main.py                 # Główny serwer FastAPI + WebSocket
+├── main.py                 # Główna aplikacja
 ├── test_agent.py          # Testy jednostkowe
-├── test_websocket_client.py # Klient testowy WebSocket
-├── run_tests.py           # Skrypt uruchamiający testy
-├── requirements.txt       # Zależności Python
+├── test_websocket_client.py # Klient testowy
+├── requirements.txt       # Zależności
 ├── .env.example          # Przykład konfiguracji
 └── README.md             # Dokumentacja
 ```
 
-### Dodawanie nowych funkcji
+## 🔒 Bezpieczeństwo
 
+- **Walidacja wejścia** - wszystkie dane są walidowane
+- **Timeout komend** - ochrona przed zawieszeniem
+- **Backup plików** - automatyczne kopie zapasowe
+- **Izolacja procesów** - bezpieczne wykonywanie komend
+
+## 🚀 Rozwój
+
+### Dodawanie Nowych Funkcji
 1. Dodaj nową metodę do klasy `DeepAgent`
-2. Zaktualizuj `handle_websocket_message`
-3. Dodaj testy w `test_agent.py`
-4. Zaktualizuj dokumentację
+2. Dodaj endpoint REST API
+3. Dodaj obsługę WebSocket
+4. Napisz testy jednostkowe
+5. Zaktualizuj dokumentację
 
-## Licencja
+### Wsparcie Języków
+Aplikacja obsługuje:
+- Python
+- JavaScript/TypeScript
+- Java
+- C#
+- Go
+- Rust
+- PHP
+- Ruby
 
-MIT License
+## 📈 Wydajność
 
-## Wsparcie
+- **Asynchroniczność** - obsługa wielu żądań jednocześnie
+- **Caching** - optymalizacja powtarzających się operacji
+- **Timeout** - kontrola czasu wykonywania
+- **Monitoring** - szczegółowe logi
 
-W przypadku problemów lub pytań, utwórz issue w repozytorium.
+## 🤝 Wsparcie
+
+### Zgłaszanie Problemów
+1. Sprawdź logi aplikacji
+2. Uruchom testy
+3. Sprawdź konfigurację
+4. Utwórz issue z szczegółami
+
+### Funkcje na Żądanie
+- Dodatkowe języki programowania
+- Nowe typy analizy kodu
+- Integracje z zewnętrznymi narzędziami
+- Rozszerzone API
+
+## 📄 Licencja
+
+MIT License - zobacz plik LICENSE dla szczegółów.
+
+## 🙏 Podziękowania
+
+- OpenAI za API GPT-4
+- FastAPI za framework webowy
+- Pydantic za walidację danych
+- Wszystkim kontrybutorom
+
+---
+
+**Deep Agent Backend** - Twój inteligentny asystent do analizy i generowania kodu! 🚀
