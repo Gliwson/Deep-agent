@@ -38,8 +38,7 @@ class Settings(BaseSettings):
     allowed_hosts: List[str] = ["*"]
     cors_origins: List[str] = ["*"]
     
-    class Config:
-        env_file = ".env"
+    model_config = {"env_file": ".env"}
 
 settings = Settings()
 
@@ -260,13 +259,17 @@ class DeepAgent:
     async def list_directory(self, directory: str = None) -> AgentResponse:
         """List directory contents"""
         try:
-            dir_path = Path(directory) if directory else self.workspace_root
+            if directory:
+                dir_path = self._validate_file_path(directory)
+            else:
+                dir_path = self.workspace_root
             
             if not dir_path.exists():
                 return AgentResponse(
                     success=False,
                     message="Directory not found",
-                    error=f"Directory {dir_path} does not exist"
+                    error=f"Directory {dir_path} does not exist",
+                    error_code="DIRECTORY_NOT_FOUND"
                 )
             
             items = []
