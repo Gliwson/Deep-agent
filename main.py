@@ -8,9 +8,15 @@ import ast
 import shutil
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 import mimetypes
 import tempfile
@@ -20,15 +26,57 @@ import time
 # Load environment variables
 load_dotenv()
 
+# Configuration
+class Settings(BaseSettings):
+    app_name: str = "Deep Agent Backend"
+    environment: str = "development"
+    debug: bool = False
+    openai_api_key: str
+    workspace_root: str = "/workspace"
+    max_file_size: int = 10 * 1024 * 1024  # 10MB
+    rate_limit_per_minute: int = 100
+    allowed_hosts: List[str] = ["*"]
+    cors_origins: List[str] = ["*"]
+    
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+log_level = logging.DEBUG if settings.debug else logging.INFO
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
+# Rate limiting
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Deep Agent Backend", version="2.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # W produkcji ustaw konkretne domeny
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Trusted host middleware
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=settings.allowed_hosts
+)
+
 
 # Initialize OpenAI
 client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
+    api_key=settings.openai_api_key
 )
 
 # Request/Response Models
@@ -87,29 +135,69 @@ class PlanningRequest(BaseModel):
     context: Optional[str] = None
     constraints: Optional[List[str]] = None
 
+# Custom Exceptions
+class DeepAgentException(Exception):
+    """Base exception for Deep Agent"""
+    pass
+
+class FileOperationError(DeepAgentException):
+    """File operation related errors"""
+    pass
+
+class CodeAnalysisError(DeepAgentException):
+    """Code analysis related errors"""
+    pass
+
+class OpenAIError(DeepAgentException):
+    """OpenAI API related errors"""
+    pass
+
+class ValidationError(DeepAgentException):
+    """Input validation errors"""
+    pass
+
 class AgentResponse(BaseModel):
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
 
 class DeepAgent:
     def __init__(self):
         self.client = client
-        self.workspace_root = Path("/workspace")
+        self.workspace_root = Path(settings.workspace_root)
         self.temp_dir = Path(tempfile.gettempdir()) / "deep_agent"
         self.temp_dir.mkdir(exist_ok=True)
+        
+    def _validate_file_path(self, file_path: str) -> Path:
+        """Validate file path for security"""
+        path = Path(file_path)
+        
+        # Prevent path traversal attacks
+        try:
+            path.resolve().relative_to(self.workspace_root.resolve())
+        except ValueError:
+            raise ValidationError(f"File path outside workspace: {file_path}")
+            
+        return path
+        
+    def _validate_file_size(self, content: str) -> None:
+        """Validate file size"""
+        if len(content.encode('utf-8')) > settings.max_file_size:
+            raise ValidationError(f"File too large. Max size: {settings.max_file_size} bytes")
         
     # File Operations
     async def read_file(self, request: FileReadRequest) -> AgentResponse:
         """Read file content"""
         try:
-            file_path = Path(request.file_path)
+            file_path = self._validate_file_path(request.file_path)
             if not file_path.exists():
                 return AgentResponse(
                     success=False,
                     message="File not found",
-                    error=f"File {file_path} does not exist"
+                    error=f"File {file_path} does not exist",
+                    error_code="FILE_NOT_FOUND"
                 )
             
             with open(file_path, 'r', encoding=request.encoding) as f:
@@ -136,7 +224,10 @@ class DeepAgent:
     async def write_file(self, request: FileWriteRequest) -> AgentResponse:
         """Write content to file"""
         try:
-            file_path = Path(request.file_path)
+            # Validate file size
+            self._validate_file_size(request.content)
+            
+            file_path = self._validate_file_path(request.file_path)
             
             # Create backup if requested
             if request.backup and file_path.exists():
@@ -330,13 +421,25 @@ class DeepAgent:
     async def execute_command(self, request: TerminalRequest) -> AgentResponse:
         """Execute terminal command"""
         try:
+            # Validate command for security
+            dangerous_commands = ['rm -rf', 'sudo', 'su', 'chmod 777', 'dd if=', 'mkfs', 'fdisk']
+            if any(cmd in request.command.lower() for cmd in dangerous_commands):
+                raise ValidationError(f"Dangerous command not allowed: {request.command}")
+            
             working_dir = Path(request.working_directory) if request.working_directory else self.workspace_root
+            
+            # Ensure working directory is within workspace
+            try:
+                working_dir.resolve().relative_to(self.workspace_root.resolve())
+            except ValueError:
+                raise ValidationError(f"Working directory outside workspace: {working_dir}")
             
             if not working_dir.exists():
                 return AgentResponse(
                     success=False,
                     message="Working directory not found",
-                    error=f"Directory {working_dir} does not exist"
+                    error=f"Directory {working_dir} does not exist",
+                    error_code="DIRECTORY_NOT_FOUND"
                 )
             
             process = await asyncio.create_subprocess_shell(
@@ -676,6 +779,40 @@ Provide the refactored code with a brief explanation of changes made."""
 # Initialize agent
 agent = DeepAgent()
 
+# Track start time for metrics
+start_time = time.time()
+
+# Global exception handler
+@app.exception_handler(DeepAgentException)
+async def deep_agent_exception_handler(request: Request, exc: DeepAgentException):
+    logger.error(f"DeepAgent error: {str(exc)}")
+    return AgentResponse(
+        success=False,
+        message="Internal error",
+        error=str(exc),
+        error_code=exc.__class__.__name__
+    )
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    logger.warning(f"Validation error: {str(exc)}")
+    return AgentResponse(
+        success=False,
+        message="Validation error",
+        error=str(exc),
+        error_code="VALIDATION_ERROR"
+    )
+
+@app.exception_handler(FileOperationError)
+async def file_operation_exception_handler(request: Request, exc: FileOperationError):
+    logger.error(f"File operation error: {str(exc)}")
+    return AgentResponse(
+        success=False,
+        message="File operation failed",
+        error=str(exc),
+        error_code="FILE_OPERATION_ERROR"
+    )
+
 # WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
@@ -803,27 +940,83 @@ async def handle_websocket_message(websocket: WebSocket, message: str):
 # REST API Endpoints
 @app.get("/")
 async def root():
-    return {"message": "Deep Agent Backend is running", "version": "2.0.0"}
+    return {
+        "message": "Deep Agent Backend is running", 
+        "version": "2.0.0",
+        "environment": settings.environment,
+        "status": "ready"
+    }
+
+@app.get("/metrics")
+async def metrics():
+    """Basic metrics endpoint"""
+    return {
+        "active_connections": len(manager.active_connections),
+        "uptime": time.time() - start_time,
+        "environment": settings.environment,
+        "rate_limit": settings.rate_limit_per_minute,
+        "max_file_size": settings.max_file_size
+    }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "agent": "ready"}
+    """Health check endpoint with detailed status"""
+    try:
+        # Check OpenAI connection
+        openai_status = "healthy"
+        try:
+            await client.models.list()
+        except Exception as e:
+            openai_status = f"unhealthy: {str(e)}"
+            logger.warning(f"OpenAI health check failed: {e}")
+        
+        # Check workspace
+        workspace_status = "healthy" if settings.workspace_root and Path(settings.workspace_root).exists() else "unhealthy"
+        
+        # Check temp directory
+        temp_status = "healthy" if agent.temp_dir.exists() else "unhealthy"
+        
+        overall_status = "healthy" if all(status == "healthy" for status in [openai_status, workspace_status, temp_status]) else "unhealthy"
+        
+        return {
+            "status": overall_status,
+            "agent": "ready",
+            "timestamp": time.time(),
+            "environment": settings.environment,
+            "components": {
+                "openai": openai_status,
+                "workspace": workspace_status,
+                "temp_directory": temp_status
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "agent": "error",
+            "error": str(e),
+            "timestamp": time.time()
+        }
 
 @app.post("/api/analyze", response_model=AgentResponse)
-async def analyze_code_api(request: CodeAnalysisRequest):
-    return await agent.analyze_code(request)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def analyze_code_api(request: Request, code_request: CodeAnalysisRequest):
+    return await agent.analyze_code(code_request)
 
 @app.post("/api/generate", response_model=AgentResponse)
-async def generate_code_api(request: CodeGenerationRequest):
-    return await agent.generate_code(request)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def generate_code_api(request: Request, code_request: CodeGenerationRequest):
+    return await agent.generate_code(code_request)
 
 @app.post("/api/tests", response_model=AgentResponse)
-async def generate_tests_api(request: TestGenerationRequest):
-    return await agent.generate_tests(request)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def generate_tests_api(request: Request, test_request: TestGenerationRequest):
+    return await agent.generate_tests(test_request)
 
 @app.post("/api/refactor", response_model=AgentResponse)
-async def refactor_code_api(request: RefactoringRequest):
-    return await agent.refactor_code(request)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def refactor_code_api(request: Request, refactor_request: RefactoringRequest):
+    return await agent.refactor_code(refactor_request)
 
 @app.post("/api/read-file", response_model=AgentResponse)
 async def read_file_api(request: FileReadRequest):

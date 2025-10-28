@@ -49,9 +49,30 @@ cp .env.example .env
 
 ## 🚀 Uruchomienie
 
-### Serwer Backend
+### Serwer Backend (Development)
 ```bash
 python main.py
+```
+
+### Serwer Backend (Production z Docker)
+```bash
+# Uruchomienie z Docker Compose
+docker-compose up -d deep-agent-backend
+
+# Sprawdzenie statusu
+docker-compose ps
+
+# Logi
+docker-compose logs -f deep-agent-backend
+```
+
+### Planning Agents (Klienci)
+```bash
+# Uruchomienie planning agentów
+docker-compose --profile planning-agents up
+
+# Lub lokalnie (wymaga uruchomionego serwera)
+python test_websocket_client.py
 ```
 
 ### Testy
@@ -173,7 +194,33 @@ const ws = new WebSocket('ws://localhost:8000/ws');
 
 ### Zmienne Środowiskowe
 ```bash
+# Skopiuj plik konfiguracyjny
+cp .env.example .env
+
+# Edytuj konfigurację
+nano .env
+```
+
+### Przykład konfiguracji (.env)
+```bash
+# OpenAI API Configuration
 OPENAI_API_KEY=your_openai_api_key_here
+
+# Application Settings
+APP_NAME=Deep Agent Backend
+ENVIRONMENT=production
+DEBUG=false
+
+# Workspace Configuration
+WORKSPACE_ROOT=/workspace
+
+# Security Settings
+MAX_FILE_SIZE=10485760  # 10MB
+RATE_LIMIT_PER_MINUTE=100
+
+# CORS and Host Settings
+ALLOWED_HOSTS=your-domain.com,api.your-domain.com
+CORS_ORIGINS=https://your-frontend.com,https://app.your-domain.com
 ```
 
 ### Ustawienia Aplikacji
@@ -304,6 +351,49 @@ Aplikacja obsługuje:
 - Nowe typy analizy kodu
 - Integracje z zewnętrznymi narzędziami
 - Rozszerzone API
+
+## 🏭 **PRODUKCJA**
+
+### Wymagania Systemowe
+- **CPU**: 2+ cores
+- **RAM**: 4GB+ 
+- **Disk**: 10GB+ wolnego miejsca
+- **OS**: Linux (Ubuntu 20.04+), macOS, Windows z WSL2
+
+### Bezpieczeństwo Produkcyjne
+1. **Ustaw konkretne domeny w CORS_ORIGINS**
+2. **Ustaw konkretne hosty w ALLOWED_HOSTS**
+3. **Użyj HTTPS w produkcji**
+4. **Skonfiguruj firewall** (port 8000)
+5. **Regularne backup** workspace
+
+### Monitoring
+- **Health Check**: `GET /health`
+- **Metrics**: `GET /metrics`
+- **Logi**: Structured JSON logging
+- **Rate Limiting**: 100 req/min per IP
+
+### Skalowanie
+- **Horizontal**: Uruchom wiele instancji za load balancerem
+- **Planning Agents**: Każdy agent jako osobny kontener
+- **Workspace**: Shared volume dla wszystkich instancji
+
+### Przykład Deployment
+```bash
+# 1. Sklonuj repozytorium
+git clone <repository-url>
+cd deep-agent-backend
+
+# 2. Skonfiguruj środowisko
+cp .env.example .env
+# Edytuj .env z prawdziwymi wartościami
+
+# 3. Uruchom w produkcji
+docker-compose up -d
+
+# 4. Sprawdź status
+curl http://localhost:8000/health
+```
 
 ## 📄 Licencja
 

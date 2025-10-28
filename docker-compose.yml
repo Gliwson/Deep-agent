@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  deep-agent-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - WORKSPACE_ROOT=/workspace
+      - MAX_FILE_SIZE=10485760
+      - RATE_LIMIT_PER_MINUTE=100
+      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+    volumes:
+      - ./workspace:/workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Planning Agent Example
+  planning-agent-1:
+    build: .
+    command: ["python3", "test_websocket_client.py"]
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - deep-agent-backend
+    restart: "no"
+    profiles:
+      - planning-agents
