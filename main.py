@@ -43,7 +43,7 @@ class CodeGenerationRequest(BaseModel):
     context: Optional[str] = None
     existing_code: Optional[str] = None
 
-class TestGenerationRequest(BaseModel):
+class CodeTestGenerationRequest(BaseModel):
     code: str
     language: str
     test_framework: Optional[str] = None
@@ -435,19 +435,82 @@ Format the response as a structured JSON with clear sections."""
                     "status_code": data.get("status_code", 200),
                     "headers": data.get("headers", {}),
                     "body": data.get("body", {}),
-                    "delay": data.get("delay", 0)
+                    "delay": data.get("delay", 0),
+                    "content_type": data.get("content_type", "application/json")
                 }
             elif mock_type == "database":
                 mock_data = {
                     "tables": data.get("tables", []),
                     "records": data.get("records", []),
-                    "relationships": data.get("relationships", [])
+                    "relationships": data.get("relationships", []),
+                    "connection_string": data.get("connection_string", "mock://localhost"),
+                    "query_timeout": data.get("query_timeout", 30)
                 }
             elif mock_type == "file_system":
                 mock_data = {
                     "files": data.get("files", []),
                     "directories": data.get("directories", []),
-                    "permissions": data.get("permissions", {})
+                    "permissions": data.get("permissions", {}),
+                    "disk_space": data.get("disk_space", 1000000000),
+                    "file_encoding": data.get("file_encoding", "utf-8")
+                }
+            elif mock_type == "websocket":
+                mock_data = {
+                    "connection_url": data.get("connection_url", "ws://localhost:8000"),
+                    "message_types": data.get("message_types", []),
+                    "handshake_headers": data.get("handshake_headers", {}),
+                    "ping_interval": data.get("ping_interval", 30),
+                    "max_message_size": data.get("max_message_size", 1024)
+                }
+            elif mock_type == "authentication":
+                mock_data = {
+                    "token": data.get("token", "mock_token_123"),
+                    "user_id": data.get("user_id", "mock_user"),
+                    "roles": data.get("roles", ["user"]),
+                    "permissions": data.get("permissions", []),
+                    "expires_at": data.get("expires_at", int(time.time()) + 3600),
+                    "refresh_token": data.get("refresh_token", "mock_refresh_123")
+                }
+            elif mock_type == "caching":
+                mock_data = {
+                    "cache_type": data.get("cache_type", "memory"),
+                    "ttl": data.get("ttl", 3600),
+                    "max_size": data.get("max_size", 1000),
+                    "eviction_policy": data.get("eviction_policy", "lru"),
+                    "compression": data.get("compression", False)
+                }
+            elif mock_type == "logging":
+                mock_data = {
+                    "log_level": data.get("log_level", "INFO"),
+                    "log_format": data.get("log_format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"),
+                    "handlers": data.get("handlers", ["console", "file"]),
+                    "max_file_size": data.get("max_file_size", 10485760),
+                    "backup_count": data.get("backup_count", 5)
+                }
+            elif mock_type == "file_upload":
+                mock_data = {
+                    "max_file_size": data.get("max_file_size", 10485760),
+                    "allowed_extensions": data.get("allowed_extensions", [".txt", ".pdf", ".jpg"]),
+                    "upload_path": data.get("upload_path", "/tmp/uploads"),
+                    "chunk_size": data.get("chunk_size", 8192),
+                    "compression": data.get("compression", False)
+                }
+            elif mock_type == "email":
+                mock_data = {
+                    "smtp_server": data.get("smtp_server", "localhost"),
+                    "smtp_port": data.get("smtp_port", 587),
+                    "username": data.get("username", "mock@example.com"),
+                    "password": data.get("password", "mock_password"),
+                    "from_address": data.get("from_address", "noreply@example.com"),
+                    "templates": data.get("templates", {})
+                }
+            elif mock_type == "queue":
+                mock_data = {
+                    "queue_name": data.get("queue_name", "mock_queue"),
+                    "message_ttl": data.get("message_ttl", 3600),
+                    "max_retries": data.get("max_retries", 3),
+                    "visibility_timeout": data.get("visibility_timeout", 30),
+                    "dead_letter_queue": data.get("dead_letter_queue", "mock_dlq")
                 }
             else:
                 mock_data = data
@@ -457,13 +520,23 @@ Format the response as a structured JSON with clear sections."""
             with open(mock_file, 'w') as f:
                 json.dump(mock_data, f, indent=2)
             
+            # Validate mock data
+            validation_result = self._validate_mock_data(mock_type, data)  # Use original data, not processed
+            if not validation_result["valid"]:
+                return AgentResponse(
+                    success=False,
+                    message="Mock validation failed",
+                    error=validation_result["error"]
+                )
+            
             return AgentResponse(
                 success=True,
                 message="Mock created successfully",
                 data={
                     "mock_type": mock_type,
                     "mock_data": mock_data,
-                    "mock_file": str(mock_file)
+                    "mock_file": str(mock_file),
+                    "validation": validation_result
                 }
             )
         except Exception as e:
@@ -473,6 +546,48 @@ Format the response as a structured JSON with clear sections."""
                 message="Failed to create mock",
                 error=str(e)
             )
+    
+    def _validate_mock_data(self, mock_type: str, mock_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate mock data based on type"""
+        try:
+            if mock_type == "api_response":
+                required_fields = ["status_code", "headers", "body"]
+                if not all(field in mock_data for field in required_fields):
+                    return {"valid": False, "error": f"Missing required fields: {required_fields}"}
+                if not isinstance(mock_data["status_code"], int) or not (100 <= mock_data["status_code"] <= 599):
+                    return {"valid": False, "error": "status_code must be an integer between 100 and 599"}
+                    
+            elif mock_type == "database":
+                required_fields = ["tables", "records"]
+                if not all(field in mock_data for field in required_fields):
+                    return {"valid": False, "error": f"Missing required fields: {required_fields}"}
+                if not isinstance(mock_data["tables"], list):
+                    return {"valid": False, "error": "tables must be a list"}
+                    
+            elif mock_type == "websocket":
+                required_fields = ["connection_url"]
+                if not all(field in mock_data for field in required_fields):
+                    return {"valid": False, "error": f"Missing required fields: {required_fields}"}
+                if not mock_data["connection_url"].startswith(("ws://", "wss://")):
+                    return {"valid": False, "error": "connection_url must start with ws:// or wss://"}
+                    
+            elif mock_type == "authentication":
+                required_fields = ["token", "user_id"]
+                if not all(field in mock_data for field in required_fields):
+                    return {"valid": False, "error": f"Missing required fields: {required_fields}"}
+                if not isinstance(mock_data["roles"], list):
+                    return {"valid": False, "error": "roles must be a list"}
+                    
+            elif mock_type == "file_upload":
+                required_fields = ["max_file_size", "allowed_extensions"]
+                if not all(field in mock_data for field in required_fields):
+                    return {"valid": False, "error": f"Missing required fields: {required_fields}"}
+                if not isinstance(mock_data["allowed_extensions"], list):
+                    return {"valid": False, "error": "allowed_extensions must be a list"}
+                    
+            return {"valid": True, "message": "Mock data is valid"}
+        except Exception as e:
+            return {"valid": False, "error": f"Validation error: {str(e)}"}
         
     # Code Analysis (Enhanced)
     async def analyze_code(self, request: CodeAnalysisRequest) -> AgentResponse:
@@ -561,7 +676,7 @@ Provide only the code without explanations, wrapped in code blocks. Include prop
             )
     
     # Test Generation (Enhanced)
-    async def generate_tests(self, request: TestGenerationRequest) -> AgentResponse:
+    async def generate_tests(self, request: CodeTestGenerationRequest) -> AgentResponse:
         """Generate unit tests for the provided code"""
         try:
             test_framework = request.test_framework or self._get_default_test_framework(request.language)
@@ -726,7 +841,7 @@ async def handle_websocket_message(websocket: WebSocket, message: str):
             await manager.send_personal_message(json.dumps(response.model_dump()), websocket)
             
         elif action == "generate_tests":
-            request = TestGenerationRequest(**data.get("data", {}))
+            request = CodeTestGenerationRequest(**data.get("data", {}))
             response = await agent.generate_tests(request)
             await manager.send_personal_message(json.dumps(response.model_dump()), websocket)
             
@@ -818,7 +933,7 @@ async def generate_code_api(request: CodeGenerationRequest):
     return await agent.generate_code(request)
 
 @app.post("/api/tests", response_model=AgentResponse)
-async def generate_tests_api(request: TestGenerationRequest):
+async def generate_tests_api(request: CodeTestGenerationRequest):
     return await agent.generate_tests(request)
 
 @app.post("/api/refactor", response_model=AgentResponse)
