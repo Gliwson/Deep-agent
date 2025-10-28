@@ -9,7 +9,7 @@ import shutil
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import mimetypes
@@ -26,10 +26,23 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Deep Agent Backend", version="2.0.0")
 
-# Initialize OpenAI
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+# Initialize Azure OpenAI
+def get_azure_openai_client():
+    """Initialize Azure OpenAI client with proper error handling"""
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    
+    if not api_key or not endpoint:
+        logger.warning("Azure OpenAI credentials not found. Using mock client for testing.")
+        return None
+    
+    return AsyncAzureOpenAI(
+        api_key=api_key,
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+        azure_endpoint=endpoint
+    )
+
+client = get_azure_openai_client()
 
 # Request/Response Models
 class CodeAnalysisRequest(BaseModel):
@@ -99,6 +112,11 @@ class DeepAgent:
         self.workspace_root = Path("/workspace")
         self.temp_dir = Path(tempfile.gettempdir()) / "deep_agent"
         self.temp_dir.mkdir(exist_ok=True)
+        
+    def _check_client(self):
+        """Check if Azure OpenAI client is available"""
+        if self.client is None:
+            raise Exception("Azure OpenAI client not initialized. Please check your environment variables.")
         
     # File Operations
     async def read_file(self, request: FileReadRequest) -> AgentResponse:
@@ -382,6 +400,7 @@ class DeepAgent:
     async def plan_task(self, request: PlanningRequest) -> AgentResponse:
         """Plan a complex task with step-by-step breakdown"""
         try:
+            self._check_client()
             constraints_text = "\n".join(request.constraints) if request.constraints else "No specific constraints"
             
             system_prompt = f"""You are an expert project planner and software architect. Create a detailed plan for the following task:
@@ -403,7 +422,7 @@ Provide a comprehensive plan with:
 Format the response as a structured JSON with clear sections."""
             
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": "Create a detailed plan for this task."}
@@ -478,6 +497,7 @@ Format the response as a structured JSON with clear sections."""
     async def analyze_code(self, request: CodeAnalysisRequest) -> AgentResponse:
         """Analyze code for issues, patterns, and suggestions"""
         try:
+            self._check_client()
             system_prompt = f"""You are an expert code analyzer. Analyze the following {request.language} code and provide:
 1. Code quality assessment
 2. Potential bugs or issues
@@ -498,7 +518,7 @@ Context: {request.context or "No additional context provided"}
 Provide a detailed analysis in JSON format with sections for quality, bugs, performance, best_practices, security, structure, dependencies, and complexity."""
             
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": "Please analyze this code thoroughly."}
@@ -525,6 +545,7 @@ Provide a detailed analysis in JSON format with sections for quality, bugs, perf
     async def generate_code(self, request: CodeGenerationRequest) -> AgentResponse:
         """Generate code based on description"""
         try:
+            self._check_client()
             system_prompt = f"""You are an expert {request.language} developer. Generate clean, efficient, and well-documented code based on the description.
 
 Requirements:
@@ -537,7 +558,7 @@ Requirements:
 Provide only the code without explanations, wrapped in code blocks. Include proper error handling, documentation, and follow best practices."""
             
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": "Generate the requested code."}
@@ -564,6 +585,7 @@ Provide only the code without explanations, wrapped in code blocks. Include prop
     async def generate_tests(self, request: TestGenerationRequest) -> AgentResponse:
         """Generate unit tests for the provided code"""
         try:
+            self._check_client()
             test_framework = request.test_framework or self._get_default_test_framework(request.language)
             
             system_prompt = f"""You are an expert in writing unit tests. Generate comprehensive unit tests for the following {request.language} code.
@@ -587,7 +609,7 @@ Requirements:
 Provide only the test code without explanations."""
             
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": "Generate comprehensive unit tests."}
@@ -614,6 +636,7 @@ Provide only the test code without explanations."""
     async def refactor_code(self, request: RefactoringRequest) -> AgentResponse:
         """Refactor code based on the specified type"""
         try:
+            self._check_client()
             system_prompt = f"""You are an expert code refactoring specialist. Refactor the following {request.language} code for: {request.refactoring_type}
 
 Original code:
@@ -635,7 +658,7 @@ Requirements:
 Provide the refactored code with a brief explanation of changes made."""
             
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": "Refactor this code according to the specified type."}
