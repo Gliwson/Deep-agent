@@ -225,16 +225,6 @@ class TestDeepAgent:
         assert "plan" in result.data
         self.agent.client.chat.completions.create.assert_called_once()
     
-    @pytest.mark.asyncio
-    async def test_create_mock_success(self):
-        """Test successful mock creation"""
-        with patch("pathlib.Path.mkdir"):
-            with patch("builtins.open", mock_open()):
-                with patch("json.dump"):
-                    result = await self.agent.create_mock("api_response", {"test": "data"})
-                    
-                    assert result.success is True
-                    assert "created successfully" in result.message
 
 class TestWebSocketIntegration:
     """Integration tests for WebSocket functionality"""
@@ -260,7 +250,8 @@ class TestWebSocketIntegration:
         # Mock the agent
         with patch('main.agent') as mock_agent:
             mock_response = Mock()
-            mock_response.dict.return_value = {"success": True, "message": "Test"}
+            # Use model_dump() for Pydantic v2 compatibility
+            mock_response.model_dump.return_value = {"success": True, "message": "Test", "data": {}}
             mock_agent.analyze_code = AsyncMock(return_value=mock_response)
             
             await handle_websocket_message(mock_websocket, message)

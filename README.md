@@ -28,10 +28,6 @@ Zaawansowane narzędzie do analizy kodu z funkcjami podobnymi do Cursor/Kite, al
 - **Planowanie zadań** - szczegółowe plany z zależnościami
 - **Analiza ryzyka** - ocena i alternatywne podejścia
 
-### 🎭 Mocki i Symulacje
-- **Tworzenie mocków** - API, bazy danych, system plików
-- **Symulacje** - testowanie bez rzeczywistych zależności
-
 ## 🛠️ Instalacja
 
 ```bash
@@ -192,7 +188,6 @@ const ws = new WebSocket('ws://localhost:8000/ws');
 - `replace_text` - zamiana tekstu
 - `execute_command` - wykonywanie komend
 - `plan_task` - planowanie zadań
-- `create_mock` - tworzenie mocków
 
 ## 🔧 Konfiguracja
 

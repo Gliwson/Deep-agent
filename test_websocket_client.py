@@ -149,13 +149,6 @@ class DeepAgentClient:
         }
         return await self.send_message("plan_task", data)
     
-    async def create_mock(self, mock_type, mock_data):
-        """Create mock data or services"""
-        data = {
-            "mock_type": mock_type,
-            "mock_data": mock_data
-        }
-        return await self.send_message("create_mock", data)
 
 async def test_agent_functionality():
     """Test all agent functionality"""
@@ -219,15 +212,7 @@ def fibonacci(n):
             ["Must use PostgreSQL", "Must have JWT authentication"]
         )
         
-        # Test 10: Mock Creation
-        print("\n=== Testing Mock Creation ===")
-        await client.create_mock("api_response", {
-            "status_code": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": {"message": "Success", "data": []}
-        })
-        
-        # Test 11: JavaScript Code
+        # Test 10: JavaScript Code
         print("\n=== Testing JavaScript Code ===")
         js_code = """
 function calculateSum(a, b) {
@@ -252,7 +237,7 @@ async def interactive_mode():
         return
     
     print("\nInteractive mode. Type 'quit' to exit.")
-    print("Commands: analyze, generate, test, refactor, read, write, list, search, replace, execute, plan, mock")
+    print("Commands: analyze, generate, test, refactor, read, write, list, search, replace, execute, plan")
     
     try:
         while True:
@@ -312,18 +297,8 @@ async def interactive_mode():
                 constraints = input("Enter constraints (comma-separated, optional): ")
                 constraints = [c.strip() for c in constraints.split(",")] if constraints else None
                 await client.plan_task(task, context, constraints)
-            elif command == "mock":
-                mock_type = input("Enter mock type (api_response, database, file_system): ")
-                print("Enter mock data as JSON (or press Enter for default):")
-                mock_data_input = input()
-                if mock_data_input:
-                    import json
-                    mock_data = json.loads(mock_data_input)
-                else:
-                    mock_data = {}
-                await client.create_mock(mock_type, mock_data)
             else:
-                print("Unknown command. Available: analyze, generate, test, refactor, read, write, list, search, replace, execute, plan, mock, quit")
+                print("Unknown command. Available: analyze, generate, test, refactor, read, write, list, search, replace, execute, plan, quit")
                 
     except KeyboardInterrupt:
         print("\nExiting...")

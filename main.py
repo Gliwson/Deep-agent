@@ -445,54 +445,6 @@ Format the response as a structured JSON with clear sections."""
                 error=str(e)
             )
     
-    # Mock and Simulation
-    async def create_mock(self, mock_type: str, data: Dict[str, Any]) -> AgentResponse:
-        """Create mock data or services for testing"""
-        try:
-            if mock_type == "api_response":
-                mock_data = {
-                    "status_code": data.get("status_code", 200),
-                    "headers": data.get("headers", {}),
-                    "body": data.get("body", {}),
-                    "delay": data.get("delay", 0)
-                }
-            elif mock_type == "database":
-                mock_data = {
-                    "tables": data.get("tables", []),
-                    "records": data.get("records", []),
-                    "relationships": data.get("relationships", [])
-                }
-            elif mock_type == "file_system":
-                mock_data = {
-                    "files": data.get("files", []),
-                    "directories": data.get("directories", []),
-                    "permissions": data.get("permissions", {})
-                }
-            else:
-                mock_data = data
-            
-            # Save mock to temporary file
-            mock_file = self.temp_dir / f"mock_{mock_type}_{int(time.time())}.json"
-            with open(mock_file, 'w') as f:
-                json.dump(mock_data, f, indent=2)
-            
-            return AgentResponse(
-                success=True,
-                message="Mock created successfully",
-                data={
-                    "mock_type": mock_type,
-                    "mock_data": mock_data,
-                    "mock_file": str(mock_file)
-                }
-            )
-        except Exception as e:
-            logger.error(f"Error creating mock: {str(e)}")
-            return AgentResponse(
-                success=False,
-                message="Failed to create mock",
-                error=str(e)
-            )
-        
     # Code Analysis (Enhanced)
     async def analyze_code(self, request: CodeAnalysisRequest) -> AgentResponse:
         """Analyze code for issues, patterns, and suggestions"""
@@ -541,7 +493,7 @@ Provide a detailed analysis in JSON format with sections for quality, bugs, perf
                 error=str(e)
             )
     
-    # Code Generation (Enhanced)
+    # Code Generation
     async def generate_code(self, request: CodeGenerationRequest) -> AgentResponse:
         """Generate code based on description"""
         try:
@@ -581,7 +533,7 @@ Provide only the code without explanations, wrapped in code blocks. Include prop
                 error=str(e)
             )
     
-    # Test Generation (Enhanced)
+    # Test Generation
     async def generate_tests(self, request: TestGenerationRequest) -> AgentResponse:
         """Generate unit tests for the provided code"""
         try:
@@ -602,7 +554,6 @@ Requirements:
 - Test edge cases and error conditions
 - Use descriptive test names
 - Include setup and teardown if needed
-- Mock external dependencies
 - Test both positive and negative scenarios
 - Include performance tests if applicable
 
@@ -632,7 +583,7 @@ Provide only the test code without explanations."""
                 error=str(e)
             )
     
-    # Refactoring (Enhanced)
+    # Code Refactoring
     async def refactor_code(self, request: RefactoringRequest) -> AgentResponse:
         """Refactor code based on the specified type"""
         try:
@@ -701,20 +652,60 @@ agent = DeepAgent()
 
 # WebSocket connection manager
 class ConnectionManager:
+    """
+    Manages WebSocket connections for the Deep Agent backend.
+    
+    This class handles the lifecycle of WebSocket connections including:
+    - Accepting new connections
+    - Tracking active connections
+    - Sending messages to specific clients
+    - Cleaning up disconnected clients
+    
+    Attributes:
+        active_connections (list[WebSocket]): List of currently active WebSocket connections
+    """
     def __init__(self):
         self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
+        """
+        Accept and register a new WebSocket connection.
+        
+        Args:
+            websocket (WebSocket): The WebSocket connection to accept
+            
+        Note:
+            The connection is added to the active_connections list after acceptance.
+        """
         await websocket.accept()
         self.active_connections.append(websocket)
         logger.info(f"New WebSocket connection. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
+        """
+        Remove a WebSocket connection from active connections.
+        
+        Args:
+            websocket (WebSocket): The WebSocket connection to disconnect
+            
+        Note:
+            This method is idempotent - it's safe to call multiple times.
+        """
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
+        """
+        Send a message to a specific WebSocket client.
+        
+        Args:
+            message (str): The message to send (will be converted to JSON string)
+            websocket (WebSocket): The target WebSocket connection
+            
+        Raises:
+            Exception: Logs error if message sending fails, but doesn't raise to caller
+        """
         try:
             await websocket.send_text(message)
         except Exception as e:
@@ -724,6 +715,78 @@ manager = ConnectionManager()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time communication with the Deep Agent backend.
+    
+    This endpoint handles bidirectional communication for:
+    - Code analysis requests and responses
+    - Code generation requests and responses
+    - File operations (read, write, list, search, replace)
+    - Terminal command execution
+    - Task planning
+    - Test generation
+    - Code refactoring
+    
+    Message Format:
+        {
+            "action": "action_name",
+            "data": {
+                // Action-specific data
+            }
+        }
+    
+    Response Format:
+        {
+            "success": bool,
+            "message": str,
+            "data": {},  // Optional
+            "error": str  // Optional, only if success is False
+        }
+    
+    Available Actions:
+        - analyze_code: Analyze code for quality, bugs, performance
+        - generate_code: Generate code based on description
+        - generate_tests: Generate unit tests for code
+        - refactor_code: Refactor code based on type
+        - read_file: Read file content
+        - write_file: Write content to file
+        - list_directory: List directory contents
+        - search_text: Search for text in files
+        - replace_text: Replace text in file
+        - execute_command: Execute terminal command
+        - plan_task: Create detailed task plan
+    
+    Example:
+        Client sends:
+        {
+            "action": "analyze_code",
+            "data": {
+                "code": "def hello(): return 'world'",
+                "language": "python",
+                "context": "Simple function"
+            }
+        }
+        
+        Server responds:
+        {
+            "success": true,
+            "message": "Code analysis completed",
+            "data": {
+                "analysis": "..."
+            }
+        }
+    
+    Connection Lifecycle:
+        - Client connects to ws://host:port/ws
+        - Server accepts connection and adds to active connections
+        - Client sends messages continuously
+        - On disconnect (client closes or error), connection is cleaned up
+    
+    Error Handling:
+        - Invalid JSON: Returns error response with success=False
+        - Unknown action: Returns error response with action name
+        - Internal errors: Returns error response with error details
+    """
     await manager.connect(websocket)
     try:
         while True:
@@ -731,9 +794,45 @@ async def websocket_endpoint(websocket: WebSocket):
             await handle_websocket_message(websocket, data)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")
+        manager.disconnect(websocket)
 
 async def handle_websocket_message(websocket: WebSocket, message: str):
-    """Handle incoming WebSocket messages"""
+    """
+    Handle incoming WebSocket messages and route them to appropriate agent methods.
+    
+    This function parses JSON messages, validates the action, extracts request data,
+    calls the corresponding agent method, and sends the response back to the client.
+    
+    Args:
+        websocket (WebSocket): The WebSocket connection that sent the message
+        message (str): JSON string containing action and data
+        
+    Supported Actions:
+        - analyze_code: Routes to agent.analyze_code()
+        - generate_code: Routes to agent.generate_code()
+        - generate_tests: Routes to agent.generate_tests()
+        - refactor_code: Routes to agent.refactor_code()
+        - read_file: Routes to agent.read_file()
+        - write_file: Routes to agent.write_file()
+        - list_directory: Routes to agent.list_directory()
+        - search_text: Routes to agent.search_text()
+        - replace_text: Routes to agent.replace_text()
+        - execute_command: Routes to agent.execute_command()
+        - plan_task: Routes to agent.plan_task()
+    
+    Error Handling:
+        - JSONDecodeError: Returns error response for invalid JSON
+        - ValidationError: Returns error response for invalid request data
+        - Exception: Catches all other errors and returns error response
+    
+    Message Structure:
+        {
+            "action": str,  // Required: Name of the action to perform
+            "data": {}      // Required: Action-specific parameters
+        }
+    """
     try:
         data = json.loads(message)
         action = data.get("action")
@@ -793,12 +892,6 @@ async def handle_websocket_message(websocket: WebSocket, message: str):
             response = await agent.plan_task(request)
             await manager.send_personal_message(json.dumps(response.model_dump()), websocket)
             
-        elif action == "create_mock":
-            mock_type = data.get("data", {}).get("mock_type", "generic")
-            mock_data = data.get("data", {}).get("mock_data", {})
-            response = await agent.create_mock(mock_type, mock_data)
-            await manager.send_personal_message(json.dumps(response.model_dump()), websocket)
-            
         else:
             error_response = AgentResponse(
                 success=False,
@@ -815,7 +908,7 @@ async def handle_websocket_message(websocket: WebSocket, message: str):
         )
         await manager.send_personal_message(json.dumps(error_response.model_dump()), websocket)
     except Exception as e:
-        logger.error(f"Error handling WebSocket message: {str(e)}")
+        logger.error(f"Error handling WebSocket message: {str(e)}", exc_info=True)
         error_response = AgentResponse(
             success=False,
             message="Internal error",
@@ -875,10 +968,6 @@ async def execute_command_api(request: TerminalRequest):
 @app.post("/api/plan", response_model=AgentResponse)
 async def plan_task_api(request: PlanningRequest):
     return await agent.plan_task(request)
-
-@app.post("/api/mock", response_model=AgentResponse)
-async def create_mock_api(mock_type: str, mock_data: Dict[str, Any]):
-    return await agent.create_mock(mock_type, mock_data)
 
 if __name__ == "__main__":
     import uvicorn
